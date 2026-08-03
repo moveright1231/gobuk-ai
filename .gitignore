@@ -1,0 +1,38 @@
+# 비밀값 — 절대 커밋 금지
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# 로컬 데이터베이스 (샘플 데이터 + 디스코드 유저 ID가 들어있음)
+gobuk.sqlite3
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-journal
+
+# 로그
+sync.log
+*.log
+
+# 파이썬
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 가상환경
+.venv/
+venv/
+env/
+
+# 에디터 / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
