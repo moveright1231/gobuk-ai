@@ -22,7 +22,22 @@ import requests
 
 import config
 import intent as intent_mod
+from flatten import normalize
 from memory_bank import MemoryBank
+
+
+def is_server_topic(question: str) -> bool:
+    """거북스토리 고유 주제를 묻는 질문인가.
+
+    잡담 경로를 막는 두 번째 그물. 의도도 고유명사도 안 잡혔지만 서버 주제어가
+    들어 있다면 그건 잡담이 아니라 '문서가 없는 게임 질문'이므로, LLM에 보내지
+    말고 관리자 문의로 돌려야 한다. 없는 지역·일정·콘텐츠를 지어내는 걸 막는다.
+
+    별칭 매칭과 같은 정규화를 쓴다. "거북 마을", "거북마을", "거북마을은" 이
+    모두 같게 걸린다.
+    """
+    low = normalize(question)
+    return any(w in low for w in config.SERVER_TOPICS)
 
 
 @dataclass
@@ -132,8 +147,13 @@ class Engine:
         # 문서로 못 답했는데 게임 질문도 아니라면 가볍게 대꾸한다.
         # 고유명사나 의도가 잡혔다면 그건 '문서가 없는 게임 질문'이므로
         # 여기로 보내면 안 된다. LLM이 없는 정보를 지어낸다.
+        #
+        # 둘 다 안 잡히는 게임 질문이 있다. "거북마을이 뭐야" 는 별칭에도
+        # INTENT_RULES 에도 없어서 잡담으로 새고, 모델은 서버 고유명사인 줄
+        # 모르니 그냥 지어낸다. 주제어 검사로 한 겹 더 막는다.
         if (reply.route == "fallback" and self.use_llm and config.SMALLTALK
                 and not parsed.entities and not parsed.intent
+                and not is_server_topic(question)
                 and len(question) <= config.SMALLTALK_MAX_CHARS):
             small = self._smalltalk(parsed)
             if small:
@@ -205,9 +225,10 @@ class Engine:
     def _smalltalk(self, parsed) -> Reply | None:
         """인사·농담·일반상식처럼 문서가 필요 없는 질문에 가볍게 답한다.
 
-        게임 정보 질문이 이 경로로 새면 LLM이 지어낸다. 두 겹으로 막는다.
+        게임 정보 질문이 이 경로로 새면 LLM이 지어낸다. 세 겹으로 막는다.
           1) 고유명사나 의도가 잡힌 질문은 호출부에서 이미 걸러진다
-          2) 그래도 게임 정보를 물으면 모델이 표식을 내도록 지시해뒀다
+          2) 서버 고유 주제어가 든 질문도 호출부에서 걸러진다 (is_server_topic)
+          3) 그래도 게임 정보를 물으면 모델이 표식을 내도록 지시해뒀다
 
         모델이 표식을 냈거나 호출이 실패하면 None. 원래대로 관리자 문의가 나간다.
         온도를 조금 높인 건 같은 인사에 매번 같은 문장이 나오지 않게 하려는 것.

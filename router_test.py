@@ -220,6 +220,25 @@ def main() -> int:
         ok &= check("의도가 잡히면 잡담으로 새지 않음", r.route != "chat",
                     f"경로 {r.route} (의도={r.intent})")
 
+        # 의도도 고유명사도 안 잡히는 게임 질문. 여기서 새면 모델이 없는
+        # 지역·일정·콘텐츠를 지어낸다. 실제로 "거북마을이 뭐야" 가 잡담으로
+        # 새서 "귀엽고 느린 거북이들이 사는 마을" 이라는 답이 나간 적이 있다.
+        # 모델이 답해버리는 상황을 가정해야 가드를 검증할 수 있다.
+        answer_mod.chat = lambda *a, **k: "귀여운 거북이들이 사는 마을이죠!"
+        for q in ("거북마을이 뭐야", "던전 종류 뭐가 있지", "다음 업데이트 언제야?",
+                  "이 서버에 대해 설명해줘"):
+            r = talker.ask(q, use_cache=False)
+            ok &= check(f"서버 주제어는 잡담으로 새지 않음: {q}",
+                        r.route == "fallback" and config.ADMIN_CONTACT in r.text,
+                        f"경로 {r.route} / {r.text[:40]}")
+
+        # 반대쪽도 지켜야 한다. 주제어 목록을 넓히다가 일반 상식까지 막으면
+        # 잡담 경로를 둔 이유가 없어진다. '거북'만으로는 걸리지 않아야 한다.
+        answer_mod.chat = lambda *a, **k: "거북이는 등껍질이 있는 파충류예요!"
+        r = talker.ask("거북이가 뭐야?", use_cache=False)
+        ok &= check("일반 상식은 계속 잡담으로 답함", r.route == "chat",
+                    f"경로 {r.route}")
+
         # 모델이 표식을 내면 원래대로 관리자 문의가 나가야 한다.
         answer_mod.chat = lambda *a, **k: config.DECLINE
         r = talker.ask("오늘 하루 어때?", use_cache=False)
