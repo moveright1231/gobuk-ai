@@ -105,6 +105,46 @@ class NotionClient:
     def block_children(self, block_id: str) -> Iterator[dict]:
         yield from self._paginate("GET", f"/blocks/{block_id}/children", {"page_size": 100})
 
+    def table_markdown(self, block: dict) -> str:
+        """표 블록을 마크다운 표로 편다.
+
+        예전에는 경고만 남기고 버렸는데, 실제 위키를 받아보니 21개 문서 중
+        14개에 표가 있었고 48개가 통째로 날아갔다. 게임 위키의 표에는 유저가
+        제일 많이 묻는 것(레벨별 수치, 보스·던전 목록, 재료 개수)이 들어간다.
+        '던전 가이드' 문서가 있는데도 "던전 종류 뭐가 있지" 에 답하지 못한 게
+        그 때문이다.
+
+        표 하나마다 자식 조회가 한 번 더 나간다. 레이트리밋(약 2.5rps)에
+        걸리므로 표가 많은 페이지는 수집이 느려진다 — 정확성과 맞바꾼 값이다.
+        """
+        rows: list[list[str]] = []
+        for child in self.block_children(block["id"]):
+            if child.get("type") != "table_row":
+                continue
+            cells = (child.get("table_row") or {}).get("cells") or []
+            # 셀 안의 파이프는 마크다운 표를 깨뜨리므로 이스케이프한다.
+            rows.append([
+                rich_text_to_plain(c).replace("\n", " ").replace("|", "\\|")
+                for c in cells
+            ])
+        if not rows:
+            return ""
+
+        width = max(len(r) for r in rows)
+        rows = [r + [""] * (width - len(r)) for r in rows]
+
+        # 헤더가 없는 표도 있다. 그때는 첫 행을 본문으로 살려야 하므로
+        # 이름 없는 헤더를 만들어 끼운다.
+        if (block.get("table") or {}).get("has_column_header"):
+            head, body = rows[0], rows[1:]
+        else:
+            head, body = [""] * width, rows
+
+        lines = ["| " + " | ".join(head) + " |",
+                 "|" + "|".join([" --- "] * width) + "|"]
+        lines += ["| " + " | ".join(r) + " |" for r in body]
+        return "\n".join(lines)
+
     def page_markdown(self, page_id: str, depth: int = 0, max_depth: int = 3) -> str:
         """페이지 본문을 마크다운 비슷한 평문으로 편다.
 
@@ -137,8 +177,7 @@ class NotionClient:
                 if text:
                     out.append(text)
             elif btype == "table":
-                # 본문 표는 파싱 품질이 나쁘다. 있으면 경고만 남기고 건너뛴다.
-                out.append("[표 블록 감지 — DB로 옮기는 걸 권장]")
+                out.append(self.table_markdown(block))
             elif btype == "image":
                 out.append("[이미지 — 텍스트 설명 없음]")
 

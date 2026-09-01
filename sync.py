@@ -34,6 +34,9 @@ def fetch_stage(client: NotionClient, store: Store, full: bool) -> dict[str, dic
     """
     raw: dict[str, dict] = {}
     for db_key, spec in config.DATA_SOURCES.items():
+        if not spec["ds_id"]:
+            print(f"  {spec['label']:<6} 건너뜀 (노션에 없는 DB, ds_id 미등록)")
+            continue
         since = None if full else store.get_cursor(db_key)
         mode = "전체" if since is None else f"증분(>{since})"
         rows = list(client.query_rows(spec["ds_id"], since))
@@ -42,7 +45,7 @@ def fetch_stage(client: NotionClient, store: Store, full: bool) -> dict[str, dic
         for page in rows:
             props = extract_all(page)
             body = ""
-            if spec["kind"] == "document" and props.get("상태") == config.PUBLISHED_STATUS:
+            if spec["kind"] == "document" and flatten.props_published(spec, props):
                 body = client.page_markdown(page["id"])
             raw[page["id"]] = {
                 "db_key": db_key, "page": page, "props": props, "body": body,
@@ -116,6 +119,10 @@ def reconcile_stage(client: NotionClient, store: Store) -> int:
     """원격에서 지워진 행을 로컬에서도 정리한다."""
     total = 0
     for db_key, spec in config.DATA_SOURCES.items():
+        if not spec["ds_id"]:
+            # 원격을 물어볼 수 없으니 대조도 못 한다. 여기서 remote 를 빈
+            # 집합으로 넘기면 그 DB의 로컬 행이 통째로 지워진다.
+            continue
         remote = client.list_row_ids(spec["ds_id"])
         gone = store.delete_missing(db_key, remote)
         if gone:
@@ -211,6 +218,9 @@ def doctor() -> int:
     problems = 0
     for db_key, spec in config.DATA_SOURCES.items():
         ds = spec["ds_id"]
+        if not ds:
+            print(f"  {spec['label']:<6} —    ds_id 미등록 (노션에 없는 DB, 건너뜀)")
+            continue
         meta = requests.get(f"{config.NOTION_BASE}/data_sources/{ds}",
                             headers=headers, timeout=20)
         if meta.status_code == 404:
@@ -225,16 +235,24 @@ def doctor() -> int:
         q = requests.post(f"{config.NOTION_BASE}/data_sources/{ds}/query",
                           headers=headers, json={"page_size": 100}, timeout=30)
         rows = q.json().get("results", []) if q.ok else []
-        pub = sum(
-            1 for row in rows
-            if (row.get("properties", {}).get("상태", {}).get("select") or {}).get("name")
-            == config.PUBLISHED_STATUS
-        )
+        sprop = spec.get("status_prop")
+        if sprop:
+            pub = sum(
+                1 for row in rows
+                if (row.get("properties", {}).get(sprop, {}).get("select") or {}).get("name")
+                == config.PUBLISHED_STATUS
+            )
+            # 상태 프로퍼티를 쓰기로 한 DB인데 게시가 0건이면, 수집은 되고
+            # 봇만 0건으로 답한다. 404 보다 찾기 어려운 실패라 따로 알린다.
+            pub_note = "" if pub else "  <- 게시 0건. 상태값 확인 필요"
+        else:
+            pub = len(rows)
+            pub_note = "  (상태 프로퍼티 없음 -> 전부 게시로 취급)"
         flag = ""
         if not rows:
-            flag = "  <- 0건. 통합 연결 또는 상태값 확인 필요"
+            flag = "  <- 0건. 통합 연결 확인 필요"
             problems += 1
-        print(f"  {spec['label']:<6} OK  {len(rows):>3}건 (게시 {pub}건){flag}")
+        print(f"  {spec['label']:<6} OK  {len(rows):>3}건 (게시 {pub}건){flag}{pub_note}")
 
     if problems:
         print(f"\n문제 {problems}건. 해당 DB를 풀페이지로 열고 "

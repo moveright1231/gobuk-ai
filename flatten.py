@@ -223,6 +223,64 @@ def build_recipe(p: dict, rec: Record, rs: Resolver) -> None:
     ]))
 
 
+def lead_paragraph(body: str, max_chars: int = 300) -> str:
+    """본문 도입부를 답변용 한 덩어리로 뽑는다.
+
+    위키 DB는 조립할 프로퍼티가 없어서 answer_text 를 만들 재료가 제목뿐이다.
+    제목만 넣으면 exact 경로가 "보스 가이드" 라는 답을 내보내게 되므로,
+    첫 실제 문단을 대신 쓴다.
+
+    머리글(#) 줄과 표(|)는 걷어낸다. 표를 도입부로 끌어오면 디스코드에
+    파이프 범벅인 한 줄이 나간다. 표의 내용은 chunk_body 쪽에서 살린다.
+
+    길이 제한은 문장 경계에서 끊는다. 글자 수로 자르면 "메테오 강" 처럼
+    낱말 중간에서 끊긴 답이 디스코드로 그대로 나간다.
+    """
+    out: list[str] = []
+    for line in (body or "").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or s.startswith(("|", "[표 블록")):
+            if out:
+                break          # 문단이 끝났다. 다음 절까지 끌고 오지 않는다.
+            continue           # 아직 도입부 전이다. 계속 넘긴다.
+        out.append(s)
+        if sum(len(x) + 1 for x in out) >= max_chars:
+            break
+    return _cut_at_sentence(" ".join(out), max_chars)
+
+
+def _cut_at_sentence(text: str, max_chars: int) -> str:
+    """max_chars 안쪽의 마지막 문장 끝에서 자른다.
+
+    문장 끝을 못 찾으면(한 문장이 통째로 긴 경우) 낱말 경계로 물러서고,
+    그마저 없으면 그냥 자른 뒤 말줄임표를 붙여 잘렸음을 알린다.
+    """
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    window = text[:max_chars]
+    end = max(window.rfind(m) for m in (".", "!", "?"))
+    if end >= max_chars // 3:
+        return window[:end + 1].strip()
+    space = window.rfind(" ")
+    if space >= max_chars // 3:
+        return window[:space].strip() + "…"
+    return window.strip() + "…"
+
+
+def build_wiki(p: dict, rec: Record, rs: Resolver) -> None:
+    """단일 위키 DB. 정보가 프로퍼티에 없고 전부 페이지 본문에 있다.
+
+    그래서 이 DB에서는 exact 경로의 이점이 작다 — 실제 답변은 chunk_body 가
+    H2 단위로 자른 본문 청크에서 나온다. answer_text 는 본문 도입부로
+    채워서, 제목이 정확매칭됐을 때 최소한 말이 되는 답이 나가게만 한다.
+    """
+    tags = p.get("태그") or []
+    rec.facts = {"태그": tags}
+    rec.answer_text = lead_paragraph(rec.body) or rec.title
+    rec.search_text = " ".join(filter(None, [rec.title, " ".join(tags)]))
+
+
 def build_guide(p: dict, rec: Record, rs: Resolver) -> None:
     tags = p.get("태그") or []
     jobs = [rs.name(i) for i in (p.get("관련직업") or []) if i != "__TRUNCATED__"]
@@ -240,7 +298,23 @@ BUILDERS: dict[str, Callable[[dict, Record, Resolver], None]] = {
     "item": build_item,
     "recipe": build_recipe,
     "guide": build_guide,
+    "wiki": build_wiki,
 }
+
+
+def props_published(spec: dict, props: dict) -> bool:
+    """이 행을 유저에게 노출할 것인가.
+
+    status_prop 이 None 인 DB는 상태 개념이 없으므로 전부 게시로 본다.
+    없는 프로퍼티를 읽으면 None 이 나와서 전 행이 조용히 미게시로 걸러진다 —
+    수집은 되는데 봇만 0건으로 답하는, 원인 찾기 제일 어려운 실패다.
+
+    본문을 긁을지 판단하는 sync.collect_stage 와 여기서 같은 규칙을 써야 한다.
+    """
+    prop = spec.get("status_prop")
+    if not prop:
+        return True
+    return props.get(prop) == config.PUBLISHED_STATUS
 
 
 def flatten(page: dict, db_key: str, props: dict, resolver: Resolver, body: str = "") -> Record:
@@ -250,7 +324,10 @@ def flatten(page: dict, db_key: str, props: dict, resolver: Resolver, body: str 
         db_key=db_key,
         title=props.get(spec["title_prop"]) or "(제목 없음)",
         url=page.get("url", ""),
-        status=props.get("상태"),
+        # 상태 개념이 없는 DB는 PUBLISHED_STATUS 를 그대로 박아둔다.
+        # 이러면 Record.is_published 부터 answer.py 까지 손댈 곳이 없다.
+        status=(props.get(spec["status_prop"]) if spec.get("status_prop")
+                else config.PUBLISHED_STATUS),
         patch_version=props.get("패치버전"),
         last_edited=page.get("last_edited_time", ""),
         body=body,
@@ -293,7 +370,10 @@ def chunk_body(rec: Record, max_chars: int = 700) -> list[dict]:
             current_head = line.lstrip("# ").strip()
             continue
         buf.append(line)
-        if sum(len(x) for x in buf) >= max_chars:
+        # 표 중간에서 끊으면 뒤쪽 조각이 헤더 없는 파이프 나열이 되어
+        # 임베딩도 답변도 망가진다. 표는 끝까지 한 청크에 담는다.
+        # ("채집" 문서의 80행짜리 표가 700자 단위로 쪼개져 있었다)
+        if sum(len(x) for x in buf) >= max_chars and not line.lstrip().startswith("|"):
             flush()
     flush()
     return chunks

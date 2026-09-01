@@ -62,39 +62,64 @@ PUBLISHED_STATUS = "게시"
 # 데이터소스 등록부.
 #   key        : 내부 식별자 (flatten 빌더 이름과 일치해야 함)
 #   ds_id      : Notion data source ID  (database ID 아님)
+#                None 이면 동기화에서 건너뛴다 — 노션에 아직 없는 DB.
 #   title_prop : 타이틀 속성명
+#   status_prop: 게시 여부가 담긴 속성명. None 이면 그 DB는 전부 게시로 본다.
 #   kind       : structured  -> 프로퍼티만으로 답변 생성, 본문 안 읽음
 #                document    -> 본문을 청킹해서 RAG 대상으로 씀
+#
+# 2026-09-01: 노션이 위키 한 장('wiki')으로 통합되면서 정형 DB 4종이 사라졌다.
+# 지우지 않고 ds_id 만 None 으로 둔 이유 —
+#   재료·가격·요구레벨처럼 값이 확정된 정보는 본문 RAG 보다 프로퍼티 조립이
+#   정확하고 LLM 호출이 0회다. 기획자가 정형 DB를 다시 만들면 ds_id 만 채우면
+#   빌더(flatten.BUILDERS)와 테스트가 그대로 되살아난다.
 DATA_SOURCES = {
     "job": {
-        "ds_id": "476c0392-e8d9-48b7-ac9a-865c61137dab",
+        "ds_id": None,
         "label": "직업",
         "title_prop": "이름",
+        "status_prop": "상태",
         "kind": "structured",
     },
     "item": {
-        "ds_id": "96fe9dbc-0954-44d0-b6a1-10734dda74cc",
+        "ds_id": None,
         "label": "아이템",
         "title_prop": "이름",
+        "status_prop": "상태",
         "kind": "structured",
     },
     "recipe": {
-        "ds_id": "2fe20be5-dfd6-40f2-b41e-e4a55952c3c5",
+        "ds_id": None,
         "label": "레시피",
         "title_prop": "이름",
+        "status_prop": "상태",
         "kind": "structured",
     },
     "guide": {
-        "ds_id": "89ce4d30-dde2-4ed6-afc2-814f1fca722e",
+        "ds_id": None,
         "label": "가이드",
         "title_prop": "제목",
+        "status_prop": "상태",
+        "kind": "document",
+    },
+    # 현재 운영되는 유일한 DB ('거북 스토리 가이드_ai', 21건).
+    # 프로퍼티는 태그/제목뿐이고 정보는 전부 페이지 본문에 있다.
+    #
+    # status_prop 이 None 인 이유: 이 DB에는 '상태' 프로퍼티가 없다. 그대로
+    # "상태" 를 읽게 두면 전 행이 미게시로 걸러져 봇이 0건으로 답한다.
+    # 노션에 상태 셀렉트를 추가하면 여기에 "상태" 를 적으면 된다.
+    "wiki": {
+        "ds_id": "aea1770d-2450-83af-b387-875f894fa936",
+        "label": "위키",
+        "title_prop": "페이지",
+        "status_prop": None,
         "kind": "document",
     },
 }
 
 # 이름이 여러 DB에 걸칠 때(예: "치즈"는 아이템이자 레시피) 라우터가 참고할 우선순위.
 # 낮을수록 먼저.
-DB_PRIORITY = {"recipe": 0, "item": 1, "job": 2, "guide": 3}
+DB_PRIORITY = {"recipe": 0, "item": 1, "job": 2, "guide": 3, "wiki": 4}
 
 # --- 의도 판별 --------------------------------------------------------
 # 질문에 섞인 단어로 어느 DB를 볼지 좁힌다. 점수제라 순서는 상관없다.

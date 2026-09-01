@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -24,6 +25,46 @@ import config
 import intent as intent_mod
 from flatten import normalize
 from memory_bank import MemoryBank
+
+
+# "이름 + 이것만" 형태의 조회 질문에서 이름 뒤에 붙는 말.
+# 글자 수로 재면 안 된다 — "레벨별로 뭐 캐"(6자)와 "설명해줘"(4자)를 길이로는
+# 가를 수 없어서 구체적인 질문이 조회로 오인된다.
+LOOKUP_TAILS = (
+    "알려줘", "알려주세요", "알려줄래", "설명해줘", "설명해봐", "설명좀", "설명",
+    "뭐야", "뭔가요", "무엇", "누구야", "누구", "정보", "가이드", "어때", "보여줘",
+)
+
+
+def strip_chunk_header(text: str) -> str:
+    """청크 앞머리의 `[문서 / 절]` 표시를 뗀다.
+
+    chunk_body 가 검색 정확도를 위해 붙여둔 것이지 유저에게 보일 문장이 아니다.
+    direct 경로는 청크를 그대로 내보내므로 여기서 걷어내야 한다.
+    """
+    lines = (text or "").splitlines()
+    if lines and lines[0].startswith("[") and lines[0].rstrip().endswith("]"):
+        lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def is_bare_lookup(parsed) -> bool:
+    """질문이 고유명사 조회에 가까운가. ("채집", "메이지 알려줘")
+
+    문서형 DB의 answer_text 는 본문 도입부일 뿐 완성된 답변이 아니다. 이름만
+    물었으면 도입부가 맞는 답이지만, "채집 레벨별로 뭐 캐" 처럼 구체적으로
+    물으면 도입부를 0ms 에 자신 있게 내보내는 오답이 된다. 정작 답은 본문 표에
+    있는데도 그렇다.
+    """
+    low = normalize(parsed.query)
+    for e in parsed.entities:
+        rest = low.replace(normalize(e["matched"]), "", 1)
+        for w in LOOKUP_TAILS + tuple(intent_mod.STOPWORDS):
+            rest = rest.replace(normalize(w), "")
+        rest = re.sub(r"[?!.,~\s]", "", rest)
+        if len(rest) <= 2:      # 조사·어미 정도만 남았다
+            return True
+    return False
 
 
 def is_server_topic(question: str) -> bool:
@@ -198,6 +239,15 @@ class Engine:
                 if len(cands) >= 3:
                     break
 
+        # 정형 DB는 프로퍼티로 조립한 완성 답변이라 구체적인 질문에도 그대로
+        # 내보내면 된다. 문서형(위키)은 도입부뿐이므로 이름만 물었을 때로 한정한다.
+        # 여기서 후보가 비면 None 을 반환해 본문 청크 검색으로 넘어간다.
+        if not is_bare_lookup(parsed):
+            cands = [c for c in cands
+                     if config.DATA_SOURCES[c["db_key"]]["kind"] != "document"]
+            if not cands:
+                return None
+
         blocks, sources = [], []
         for e in cands:
             row = self.store.conn.execute(
@@ -274,8 +324,15 @@ class Engine:
 
         # 충분히 확실하면 LLM을 부르지 않는다. 기획자가 쓴 요약이 이미 답이다.
         if top_score >= config.VECTOR_DIRECT or not self.use_llm:
+            # 단 문서형 DB는 answer_text 가 본문 도입부일 뿐이다. 그걸 내보내면
+            # "곤충 키우기 배고픔 수치" 에 컨텐츠 소개가 나간다 — 정작 걸린
+            # 절은 버려진다. 매칭된 청크가 질문에 걸린 그 절이므로 그쪽을 쓴다.
+            if config.DATA_SOURCES[top["db_key"]]["kind"] == "document":
+                text = strip_chunk_header(top["text"]) or top["answer_text"]
+            else:
+                text = top["answer_text"] or top["text"]
             return Reply(
-                text=top["answer_text"] or top["text"], route="direct",
+                text=text, route="direct",
                 sources=sources[:2], similarity=round(top_score, 4),
             )
 
