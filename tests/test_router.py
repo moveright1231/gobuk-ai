@@ -12,10 +12,17 @@ import tempfile
 
 import numpy as np
 
-import config
-from answer import Engine
-from smoke_test import P, load, make_raw, check
-from store import Store
+# 별도 테스트 러너를 쓰지 않는다. 두 파일 모두 그냥 실행하면 되는 스크립트이므로
+# 저장소 루트를 직접 sys.path 에 올린다. (python tests/test_sync.py)
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+from gobuk import config
+from gobuk.engine.answer import Engine
+from test_sync import P, load, make_raw, check
+from gobuk.store import Store
 
 
 class FakeEmbedder:
@@ -75,7 +82,7 @@ def main() -> int:
     # 가짜 임베더로는 실제 모델의 유사도 분포를 못 만든다.
     # 그래서 '유사도는 임계값을 넘는데 고유명사가 다른' 상황을 직접 만들어
     # 방어 로직만 정확히 검증한다.
-    from memory_bank import MemoryBank
+    from gobuk.store import MemoryBank
     bank = MemoryBank(eng.store)
     rng = np.random.default_rng(0)
     base = rng.normal(size=config.EMBED_DIM).astype(np.float32)
@@ -206,7 +213,7 @@ def main() -> int:
                 and by_route.get("exact") == (1, 0), str(by_route))
 
     print("\n11. 잡담 경로 (게임 질문이 새지 않는가)")
-    import answer as answer_mod
+    from gobuk.engine import answer as answer_mod
     real_chat = answer_mod.chat
     talker = Engine(eng.store, embedder=eng._embedder, use_llm=True, log_misses=False)
     try:

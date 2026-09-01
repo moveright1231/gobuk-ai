@@ -10,9 +10,16 @@ from __future__ import annotations
 import os
 import tempfile
 
-import flatten
-from flatten import Resolver, chunk_body
-from store import Store
+# 별도 테스트 러너를 쓰지 않는다. 두 파일 모두 그냥 실행하면 되는 스크립트이므로
+# 저장소 루트를 직접 sys.path 에 올린다. (python tests/test_sync.py)
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+from gobuk.sync import flatten
+from gobuk.sync.flatten import Resolver, chunk_body
+from gobuk.store import Store
 
 JOB, ITEM, RECIPE, GUIDE = "job", "item", "recipe", "guide"
 
@@ -139,7 +146,7 @@ def main() -> int:
     store = Store(os.path.join(tmp, "test.sqlite3"))
     load(store, make_raw())
 
-    from answer import Engine
+    from gobuk.engine.answer import Engine
     eng = Engine(store, use_llm=False)
 
     def ask(q):

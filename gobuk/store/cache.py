@@ -1,4 +1,4 @@
-"""메모리뱅크 (시맨틱 캐시).
+"""메모리뱅크 — 답변 시맨틱 캐시.
 
 같은 질문이 또 오면 저장해둔 답을 그대로 낸다. LLM 호출 0회, 응답 즉시.
 
@@ -6,10 +6,13 @@
 임베딩 유사도만 보면 마인크래프트 도메인에서 반드시 사고가 난다.
 
     "요리사 토마토스파게티 레시피"  vs  "요리사 크림스파게티 레시피"   -> 0.96+
-    "워리어 전직 조건"             vs  "어세신 전직 조건"            -> 0.97+
+    "팔라딘 전직 조건"             vs  "클레릭 전직 조건"            -> 0.97+
 
 문장 구조가 같고 고유명사 한 단어만 다르기 때문이다. 그래서 유사도와 별개로
 고유명사(entity_key)가 정확히 일치할 것을 필수 조건으로 건다.
+
+표 정의를 이 파일에 함께 둔다. 예전에는 DDL 만 store.py 에 있어서
+캐시 동작을 고칠 때 두 파일을 왕복해야 했다.
 """
 from __future__ import annotations
 
@@ -18,7 +21,7 @@ import json
 
 import numpy as np
 
-import config
+from gobuk import config
 
 
 def _hash(text: str) -> str:
@@ -160,3 +163,25 @@ class MemoryBank:
             "hits": row["hits"],
             "hit_rate": round(row["hits"] / total, 3) if total else 0.0,
         }
+
+
+DDL = """
+-- 메모리뱅크. 질문 임베딩 캐시.
+-- entity_key 는 질문에 등장한 고유명사의 페이지 ID 집합이다. 임베딩 유사도만으로
+-- 캐시를 히트시키면 '토마토스파게티 레시피'와 '크림스파게티 레시피'가 섞이므로,
+-- 이 키가 정확히 같을 때만 재사용한다.
+CREATE TABLE IF NOT EXISTS memory_bank (
+    cache_id     TEXT PRIMARY KEY,
+    question     TEXT NOT NULL,
+    embedding    BLOB NOT NULL,
+    answer       TEXT NOT NULL,
+    route        TEXT,
+    intent       TEXT,
+    entity_key   TEXT NOT NULL DEFAULT '',
+    source_pages TEXT NOT NULL DEFAULT '[]',
+    hit_count    INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_hit_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cache_entity ON memory_bank(entity_key);
+"""

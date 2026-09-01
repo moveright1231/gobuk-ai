@@ -21,10 +21,10 @@ from dataclasses import dataclass, field
 import numpy as np
 import requests
 
-import config
-import intent as intent_mod
-from flatten import normalize
-from memory_bank import MemoryBank
+from gobuk import config
+from gobuk.engine import intent as intent_mod
+from gobuk.sync.flatten import normalize
+from gobuk.store import MemoryBank
 
 
 # "이름 + 이것만" 형태의 조회 질문에서 이름 뒤에 붙는 말.
@@ -133,7 +133,7 @@ class Engine:
     @property
     def embedder(self):
         if self._embedder is None:
-            from embed import Embedder
+            from gobuk.engine.embed import Embedder
             self._embedder = Embedder()
         return self._embedder
 

@@ -11,7 +11,7 @@ from typing import Any, Iterator
 
 import requests
 
-import config
+from gobuk import config
 
 
 class RateLimiter:

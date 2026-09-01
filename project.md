@@ -36,26 +36,61 @@ python query.py --unanswered  # 답변 못 한 질문 (= 문서 작성 우선순
 python query.py --feedback    # 👍/👎 집계 (= 임계값 튜닝 근거)
 python bot.py
 
-python smoke_test.py          # 동기화 로직 (API 불필요)
-python router_test.py         # 라우터 + 메모리뱅크 (API 불필요)
+python tests/test_sync.py          # 동기화 로직 (API 불필요)
+python tests/test_router.py         # 라우터 + 메모리뱅크 (API 불필요)
 ```
 
 **코드를 고쳤으면 두 테스트를 반드시 돌린다.** 둘 다 외부 API 없이 동작한다.
+
+## 디렉토리 구조
+
+```
+sync.py  query.py  bot.py     진입점 (얇은 래퍼. 명령어는 예전과 같다)
+gobuk/
+  config.py                   .env 로딩, 데이터소스 등록부, 임계값, 프롬프트
+  notion/client.py            Notion REST 래퍼. 레이트리밋/페이지네이션/표 파싱
+  sync/
+    flatten.py                원시 행 -> answer_text / search_text, 본문 청킹
+    pipeline.py               fetch -> flatten -> ripple -> reconcile
+    doctor.py                 --doctor / --discover (설치 진단)
+    cli.py                    argparse + 적재 상태 출력
+  store/
+    base.py                   연결. DDL 은 각 믹스인이 들고 있다
+    records.py                레코드/별칭/동기화 커서/변경 로그
+    search.py                 청크/임베딩/FTS
+    cache.py                  메모리뱅크 (표 정의 + 클래스)
+    feedback.py               미답변 질문/답변 만족도
+  engine/
+    intent.py                 의도 판별 + 고유명사 추출
+    answer.py                 응답 라우팅
+    embed.py                  OpenAI 임베딩
+    cli.py                    query.py 구현
+  bot.py                      디스코드 클라이언트
+tests/
+  test_sync.py                동기화 로직 (API 불필요)
+  test_router.py              라우터 + 메모리뱅크 (API 불필요)
+```
+
+`Store` 는 관심사별 믹스인을 합친 것이다(`store/__init__.py`). 클래스를 쪼개지
+않은 이유는 `delete_missing`(레코드)이 `_drop_chunks`(검색)를 부르는 것처럼
+관심사를 가로지르는 연산이 실제로 있고, 위임으로 풀면 배선만 늘기 때문이다.
+표 정의는 각 믹스인 모듈이 자기 것을 들고 있다 — 예전에는 `memory_bank` 표만
+`store.py` 에 있어서 캐시를 고칠 때 두 파일을 왕복해야 했다.
 
 ## 파일 맵
 
 | 파일 | 역할 |
 |---|---|
-| `config.py` | 데이터소스 등록부, 의도 키워드, 임계값, 프롬프트 |
-| `notion_api.py` | Notion REST 래퍼. 레이트리밋, 페이지네이션, 본문 수집 |
-| `flatten.py` | 원시 행 → `answer_text`(완성 답변) / `search_text`(임베딩용) |
-| `store.py` | SQLite 전부. 레코드, 별칭 색인, 청크, 변경 로그, 캐시, 미답변 질문 |
-| `embed.py` | OpenAI 임베딩 (변경분만) |
+| `gobuk/config.py` | 데이터소스 등록부, 의도 키워드, 임계값, 프롬프트 |
+| `gobuk/notion/client.py` | Notion REST 래퍼. 레이트리밋, 페이지네이션, 본문 수집 |
+| `gobuk/sync/flatten.py` | 원시 행 → `answer_text`(완성 답변) / `search_text`(임베딩용) |
+| `gobuk/store/` | SQLite 전부. 레코드, 별칭 색인, 청크, 변경 로그, 캐시, 미답변 질문 |
+| `gobuk/engine/embed.py` | OpenAI 임베딩 (변경분만) |
 | `sync.py` | 동기화 오케스트레이션 + `--doctor` |
-| `intent.py` | 의도 판별 + 고유명사 추출 |
-| `memory_bank.py` | 시맨틱 캐시 |
-| `answer.py` | 응답 엔진 (라우팅) |
-| `bot.py` | 디스코드 봇 |
+| `gobuk/engine/intent.py` | 의도 판별 + 고유명사 추출 |
+| `gobuk/store/cache.py` | 시맨틱 캐시 |
+| `gobuk/engine/answer.py` | 응답 엔진 (라우팅) |
+| `gobuk/bot.py` | 디스코드 봇 |
 | `query.py` | 엔진 CLI. 봇과 같은 경로를 탄다 |
 
 ## 응답 경로
@@ -81,7 +116,7 @@ python router_test.py         # 라우터 + 메모리뱅크 (API 불필요)
 
 | key | 라벨 | 상태 |
 |---|---|---|
-| `wiki` | 위키 | **운영 중.** 21건. 실제 ds_id 는 `config.py` 참고 |
+| `wiki` | 위키 | **운영 중.** 21건. 실제 ds_id 는 `gobuk/config.py` 참고 |
 | `job` / `item` / `recipe` / `guide` | 직업/아이템/레시피/가이드 | `ds_id: None`. 노션에 없음 |
 
 `ds_id` 가 `None` 이면 동기화·`--doctor`·삭제정합에서 모두 건너뛴다. 등록부와
@@ -126,7 +161,7 @@ python router_test.py         # 라우터 + 메모리뱅크 (API 불필요)
 
 ```
 "요리사 토마토스파게티 레시피"  vs  "요리사 크림스파게티 레시피"   → 0.96+
-"워리어 전직 조건"             vs  "어세신 전직 조건"            → 0.97+
+"팔라딘 전직 조건"             vs  "클레릭 전직 조건"            → 0.97+
 ```
 
 문장 구조가 같고 고유명사 한 단어만 다르기 때문이다. 그래서 캐시 히트에
@@ -136,7 +171,7 @@ python router_test.py         # 라우터 + 메모리뱅크 (API 불필요)
 
 의도도 함께 본다. `치즈 레시피`와 `치즈 얼마`는 고유명사가 같아도 답이 달라야 한다.
 
-`router_test.py` 4번 항목이 이걸 지킨다. **이 테스트를 우회하거나 완화하지 말 것.**
+`tests/test_router.py` 4번 항목이 이걸 지킨다. **이 테스트를 우회하거나 완화하지 말 것.**
 
 ### 6. LLM의 거절은 낱말이 아니라 표식(`config.DECLINE`)으로 받는다
 
@@ -147,7 +182,7 @@ python router_test.py         # 라우터 + 메모리뱅크 (API 불필요)
 지금은 두 프롬프트 모두 답할 수 없을 때 `__NO__` 만 출력하도록 지시한다.
 표식은 정상 답변과 절대 겹치지 않는다. 모델이 표식을 무시하고 말로 거절하는
 경우만 좁은 낱말 검사(`모르겠`/`정보가없`/`찾을수없`/`알수없`)로 한 번 더 잡는다.
-`없습니다` 는 그 목록에서 뺐다. `router_test.py` 12번이 이걸 지킨다.
+`없습니다` 는 그 목록에서 뺐다. `tests/test_router.py` 12번이 이걸 지킨다.
 
 ### 7. 잡담 경로는 게임 질문을 절대 받지 않는다
 
@@ -181,13 +216,13 @@ python router_test.py         # 라우터 + 메모리뱅크 (API 불필요)
 ### 10. SQLite `check_same_thread=False`
 
 봇이 이벤트 루프를 막지 않으려고 엔진을 `asyncio.to_thread`로 호출한다.
-동시 접근은 `bot.py`의 `asyncio.Lock`으로 막는다. **락을 제거하지 말 것.**
+동시 접근은 `gobuk/bot.py`의 `asyncio.Lock`으로 막는다. **락을 제거하지 말 것.**
 
 ## 코딩 규칙
 
 - 주석과 문서는 한국어. 사용자(기획자·운영자)가 읽는다.
 - 주석은 **왜 그렇게 했는지**를 쓴다. 무엇을 하는지는 코드가 말한다.
-- 새 DB 추가: `config.DATA_SOURCES`에 항목 추가 → `flatten.py`에 `build_*` 빌더 작성 →
+- 새 DB 추가: `config.DATA_SOURCES`에 항목 추가 → `gobuk/sync/flatten.py`에 `build_*` 빌더 작성 →
   `BUILDERS`에 등록. 그 외 파일은 손댈 필요 없다.
 - 에러 메시지는 **다음에 뭘 해야 하는지**까지 적는다. `--doctor`가 그 예다.
 - 외부 API 호출은 재시도 가능/불가능을 반드시 구분한다.
@@ -261,3 +296,26 @@ python router_test.py         # 라우터 + 메모리뱅크 (API 불필요)
   **NPC/지역 DB를 추가할 때 같이 볼 것** — 이름이 별칭 색인에 오르면
   잘못 잡힌 의도가 `_exact`에서 정답 후보를 걸러낸다.
 - 이미지 안의 텍스트는 읽지 못한다.
+
+## 서버 소개 문서 (base.md)
+
+노션 위키에 없는 '서버 자체'에 대한 설명은 저장소의 `base.md` 에 있다.
+장르·재화(쉘)·월드 구조(드라멜/마을/야생)·전투 성장 흐름·단축키·규칙 같은 전제다.
+
+`sync.py` 가 위키와 같은 방식으로 적재한다(`sync.pipeline.local_stage`). 노션이
+아니라 로컬 파일이므로 `ds_id` 가 없고 API 호출도 없다. **파일을 고쳤으면
+`python sync.py --reflatten` 을 돌려야 봇에 반영된다.**
+
+이 파일이 없으면 "이 서버 뭐하는 서버야", "맵은 어떤게 있지" 류가 전부 관리자
+문의로 빠진다 — 위키 21개 문서는 개별 콘텐츠만 다루기 때문이다.
+
+프롬프트에는 전문을 넣지 않는다. 약 4~5천 토큰이라 LLM 호출마다 요금이 붙는다.
+`config.SERVER_BRIEF` 3~4줄만 상주시키고 본문은 검색되게 둔다.
+
+작성 시 주의:
+- 절 제목(`##`, `###`)을 달 것. 청킹 단위이며 검색 정확도를 좌우한다.
+- 고유명사를 본문에도 쓸 것. 제목에만 있으면 임베딩 신호가 희석된다
+  (클레릭 설명에 '클레릭'이 없어서 유사도가 0.20까지 떨어진 적이 있다).
+- 유저 어휘를 함께 쓸 것. 문서가 '월드'라고만 쓰면 "맵은 어떤게 있지"에 못 답한다.
+- 리워크·미확정 콘텐츠는 설명하지 말고 **상태만** 적을 것.
+  봇이 바뀔 정보를 확정처럼 답하는 것이 못 답하는 것보다 나쁘다.

@@ -10,7 +10,7 @@ import time
 import numpy as np
 import requests
 
-import config
+from gobuk import config
 
 # 429 로 오지만 기다린다고 풀리지 않는 것들. 재시도하면 안 된다.
 FATAL_CODES = {

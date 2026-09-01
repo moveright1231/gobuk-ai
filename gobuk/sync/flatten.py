@@ -16,7 +16,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-import config
+from gobuk import config
 
 
 @dataclass
@@ -281,6 +281,17 @@ def build_wiki(p: dict, rec: Record, rs: Resolver) -> None:
     rec.search_text = " ".join(filter(None, [rec.title, " ".join(tags)]))
 
 
+def build_server(p: dict, rec: Record, rs: Resolver) -> None:
+    """서버 소개 문서(base.md). 노션이 아니라 로컬 파일에서 온다.
+
+    프로퍼티가 없으므로 위키와 같은 방식으로 본문에만 의존한다. 실제 답변은
+    chunk_body 가 절 단위로 자른 청크에서 나온다.
+    """
+    rec.facts = {"출처": "로컬 서버 소개 문서"}
+    rec.answer_text = lead_paragraph(rec.body) or rec.title
+    rec.search_text = rec.title
+
+
 def build_guide(p: dict, rec: Record, rs: Resolver) -> None:
     tags = p.get("태그") or []
     jobs = [rs.name(i) for i in (p.get("관련직업") or []) if i != "__TRUNCATED__"]
@@ -299,6 +310,7 @@ BUILDERS: dict[str, Callable[[dict, Record, Resolver], None]] = {
     "recipe": build_recipe,
     "guide": build_guide,
     "wiki": build_wiki,
+    "server": build_server,
 }
 
 

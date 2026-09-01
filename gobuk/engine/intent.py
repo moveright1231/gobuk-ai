@@ -14,8 +14,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-import config
-from flatten import normalize
+from gobuk import config
+from gobuk.sync.flatten import normalize
 
 # 조사/어미. 긴 것부터 떼어낸다.
 PARTICLES = ("으로는", "에서는", "이라고", "으로", "에서", "이랑", "하고", "까지",

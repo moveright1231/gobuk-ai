@@ -45,7 +45,7 @@ python sync.py --full         # 전체 + 삭제 정합. 하루 1회
 python sync.py --reflatten    # API 없이 로컬 재생성 (답변 문구 수정 시)
 python sync.py --stats        # 적재 현황
 python query.py "토스파 레시피 알려줘"
-python smoke_test.py          # 토큰 없이 로직 검증
+python tests/test_sync.py          # 토큰 없이 로직 검증
 ```
 
 크론 예시:
@@ -55,15 +55,50 @@ python smoke_test.py          # 토큰 없이 로직 검증
 30   4 * * *  cd /opt/gobuk_sync && python sync.py --full >> sync.log 2>&1
 ```
 
+## 디렉토리 구조
+
+```
+sync.py  query.py  bot.py     진입점 (얇은 래퍼. 명령어는 예전과 같다)
+gobuk/
+  config.py                   .env 로딩, 데이터소스 등록부, 임계값, 프롬프트
+  notion/client.py            Notion REST 래퍼. 레이트리밋/페이지네이션/표 파싱
+  sync/
+    flatten.py                원시 행 -> answer_text / search_text, 본문 청킹
+    pipeline.py               fetch -> flatten -> ripple -> reconcile
+    doctor.py                 --doctor / --discover (설치 진단)
+    cli.py                    argparse + 적재 상태 출력
+  store/
+    base.py                   연결. DDL 은 각 믹스인이 들고 있다
+    records.py                레코드/별칭/동기화 커서/변경 로그
+    search.py                 청크/임베딩/FTS
+    cache.py                  메모리뱅크 (표 정의 + 클래스)
+    feedback.py               미답변 질문/답변 만족도
+  engine/
+    intent.py                 의도 판별 + 고유명사 추출
+    answer.py                 응답 라우팅
+    embed.py                  OpenAI 임베딩
+    cli.py                    query.py 구현
+  bot.py                      디스코드 클라이언트
+tests/
+  test_sync.py                동기화 로직 (API 불필요)
+  test_router.py              라우터 + 메모리뱅크 (API 불필요)
+```
+
+`Store` 는 관심사별 믹스인을 합친 것이다(`store/__init__.py`). 클래스를 쪼개지
+않은 이유는 `delete_missing`(레코드)이 `_drop_chunks`(검색)를 부르는 것처럼
+관심사를 가로지르는 연산이 실제로 있고, 위임으로 풀면 배선만 늘기 때문이다.
+표 정의는 각 믹스인 모듈이 자기 것을 들고 있다 — 예전에는 `memory_bank` 표만
+`store.py` 에 있어서 캐시를 고칠 때 두 파일을 왕복해야 했다.
+
 ## 구조
 
 | 파일 | 역할 |
 |---|---|
-| `config.py` | 데이터소스 등록부. DB 추가는 여기부터 |
-| `notion_api.py` | REST 래퍼. 레이트리밋, 페이지네이션, 본문 수집 |
-| `flatten.py` | 원시 행 → `answer_text` / `search_text` |
-| `store.py` | SQLite. 레코드, 별칭 색인, 청크, 변경 로그 |
-| `embed.py` | OpenAI 임베딩 (변경분만) |
+| `gobuk/config.py` | 데이터소스 등록부. DB 추가는 여기부터 |
+| `gobuk/notion/client.py` | REST 래퍼. 레이트리밋, 페이지네이션, 본문 수집 |
+| `gobuk/sync/flatten.py` | 원시 행 → `answer_text` / `search_text` |
+| `gobuk/store/` | SQLite. 레코드, 별칭 색인, 청크, 변경 로그 |
+| `gobuk/engine/embed.py` | OpenAI 임베딩 (변경분만) |
 | `sync.py` | 오케스트레이션 |
 | `query.py` | 검색 검증 도구. B단계 라우터의 뼈대 |
 
@@ -190,7 +225,7 @@ python query.py --clear-cache
 
 ```
 "요리사 토마토스파게티 레시피"  vs  "요리사 크림스파게티 레시피"   → 0.96+
-"워리어 전직 조건"             vs  "어세신 전직 조건"            → 0.97+
+"팔라딘 전직 조건"             vs  "클레릭 전직 조건"            → 0.97+
 ```
 
 문장 구조가 같고 고유명사 한 단어만 다르기 때문이다. 그래서 캐시 히트에
@@ -248,7 +283,7 @@ python bot.py
 ## 테스트
 
 ```bash
-python smoke_test.py    # 동기화 로직 (API 불필요)
-python router_test.py   # 라우터 + 메모리뱅크 (API 불필요)
+python tests/test_sync.py    # 동기화 로직 (API 불필요)
+python tests/test_router.py   # 라우터 + 메모리뱅크 (API 불필요)
 ```
 
