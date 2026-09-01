@@ -81,7 +81,7 @@ WIKI_DS_ID=                   # 3번에서 채움
 .env 에 붙여넣을 값:
 
   # 거북 스토리 가이드_ai
-  WIKI_DS_ID=aea1770d-2450-83af-b387-875f894fa936
+  WIKI_DS_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
 이 값을 `.env`의 `WIKI_DS_ID`에 넣는다.
