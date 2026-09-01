@@ -72,7 +72,7 @@ gobuk/
     records.py                레코드/별칭/동기화 커서/변경 로그
     search.py                 청크/임베딩/FTS
     cache.py                  메모리뱅크 (표 정의 + 클래스)
-    feedback.py               미답변 질문/답변 만족도
+    unanswered.py             답변 못 한 질문 로그
   engine/
     intent.py                 의도 판별 + 고유명사 추출
     answer.py                 응답 라우팅

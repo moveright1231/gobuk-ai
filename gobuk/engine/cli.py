@@ -7,7 +7,6 @@
   python query.py --no-llm "..."        LLM 없이 (임베딩만)
   python query.py --bench               표준 질문 세트 일괄 실행
   python query.py --unanswered          답변 못 한 질문 (문서 작성 우선순위)
-  python query.py --feedback            👍/👎 집계 (임계값 튜닝 근거)
 """
 from __future__ import annotations
 
@@ -84,42 +83,6 @@ def print_unanswered(store) -> None:
           f"문서를 채운 뒤에는 python query.py --clear-unanswered")
 
 
-def print_feedback(store) -> None:
-    """임계값을 어느 쪽으로 움직여야 하는지 보이게 출력한다."""
-    good, bad = store.feedback_totals()
-    if not (good + bad):
-        print("아직 모인 표가 없습니다. 봇을 띄우고 답변에 👍/👎 를 받아주세요.")
-        return
-
-    print(f"\n답변 만족도  👍 {good} / 👎 {bad}  (총 {good + bad}표)\n")
-    # 한글/이모지는 두 칸을 차지해서 폭 지정이 안 맞는다. 헤더는 직접 맞춘다.
-    print("  경로      👍    👎  만족도")
-    for r in store.feedback_by_route():
-        g, b = r["good"] or 0, r["bad"] or 0
-        rate = f"{g / (g + b):.0%}" if (g + b) else "-"
-        print(f"  {r['route'] or '?':<10}{g:>4}{b:>6}{rate:>8}")
-
-    rows = store.feedback_bad(15)
-    if not rows:
-        print("\n  👎 없음. 지금 임계값을 낮춰 더 답하게 만들 여지가 있습니다.")
-        return
-
-    print("\n  👎 받은 답변  (유사도가 임계값을 어디로 옮길지 알려준다)")
-    for r in rows:
-        sim = f"{r['similarity']:.4f}" if r["similarity"] is not None else "-"
-        print(f"    {r['bad']:>2}표  [{r['route']}] 유사도 {sim}  {r['question'][:44]}")
-
-    # direct 경로의 👎 는 '요약을 그대로 내보냈는데 부족했다'는 뜻이다.
-    # 그 유사도들의 최댓값 위로 VECTOR_DIRECT 를 올리면 LLM 요약으로 넘어간다.
-    direct_bad = [r["similarity"] for r in rows
-                  if r["route"] == "direct" and r["similarity"] is not None]
-    if direct_bad:
-        print(f"\n  direct 경로 👎 의 유사도 범위: "
-              f"{min(direct_bad):.4f} ~ {max(direct_bad):.4f}")
-        print(f"  현재 VECTOR_DIRECT={config.VECTOR_DIRECT}. "
-              f"{max(direct_bad):.2f} 위로 올리면 이 질문들이 LLM 요약으로 넘어갑니다.")
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("query", nargs="*")
@@ -131,8 +94,6 @@ def main() -> int:
     ap.add_argument("--unanswered", action="store_true",
                     help="답변 못 한 질문을 많이 물어본 순으로 출력")
     ap.add_argument("--clear-unanswered", action="store_true")
-    ap.add_argument("--feedback", action="store_true",
-                    help="👍/👎 집계 (임계값 튜닝 근거)")
     args = ap.parse_args()
 
     store = Store()
@@ -151,8 +112,6 @@ def main() -> int:
         print_unanswered(store)
         return 0
 
-    if args.feedback:
-        print_feedback(store)
         return 0
 
     if args.bench:

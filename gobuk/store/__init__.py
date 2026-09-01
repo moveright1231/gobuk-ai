@@ -1,7 +1,7 @@
 """로컬 저장소.
 
 Store 는 관심사별 믹스인을 합친 것이다. 클래스를 쪼개지 않고 믹스인으로 둔 이유:
-  - 호출부가 store.upsert / store.log_answer 처럼 한 객체에 그대로 접근한다
+  - 호출부가 store.upsert / store.log_unanswered 처럼 한 객체에 그대로 접근한다
   - delete_missing(레코드)이 _drop_chunks(검색)를 부르는 것처럼 관심사를
     가로지르는 연산이 실제로 있고, 이걸 위임으로 풀면 배선만 늘어난다
 
@@ -11,18 +11,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from gobuk.store import cache, feedback, records, search
+from gobuk.store import cache, records, search, unanswered
 from gobuk.store.base import BaseStore
 from gobuk.store.cache import MemoryBank
-from gobuk.store.feedback import FeedbackMixin
 from gobuk.store.records import RecordsMixin
 from gobuk.store.search import SearchMixin
+from gobuk.store.unanswered import UnansweredMixin
 
 __all__ = ["Store", "MemoryBank"]
 
 
-class Store(RecordsMixin, SearchMixin, FeedbackMixin, BaseStore):
-    DDL = (records.DDL, search.DDL, cache.DDL, feedback.DDL)
+class Store(RecordsMixin, SearchMixin, UnansweredMixin, BaseStore):
+    DDL = (records.DDL, search.DDL, cache.DDL, unanswered.DDL)
 
     def stats(self) -> dict[str, Any]:
         """일부러 여기 둔다 — 레코드와 청크를 함께 세므로 어느 한 관심사가 아니다."""

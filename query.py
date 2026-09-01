@@ -5,7 +5,6 @@
   python query.py -i                    # 대화형
   python query.py --bench               # 표준 질문 일괄 실행, 경로 분포 출력
   python query.py --unanswered          # 답변 못 한 질문 (= 문서 작성 우선순위)
-  python query.py --feedback            # 👍/👎 집계 (= 임계값 튜닝 근거)
 
 구현은 gobuk/engine/cli.py 에 있다.
 """

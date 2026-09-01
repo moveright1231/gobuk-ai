@@ -178,41 +178,7 @@ def main() -> int:
                 len(eng.store.unanswered_top()) == 1)
     eng.store.clear_unanswered()
 
-    print("\n10. 만족도 수집")
-    st = eng.store
-    st.log_answer("msg1", "토스파 레시피", "답변A", "direct", "recipe", 0.61, ["p1"])
-    st.log_answer("msg2", "앗사 전직", "답변B", "exact", "job", None, ["p2"])
-
-    ok &= check("봇 답변이 아닌 메시지의 표는 무시",
-                st.vote("없는메시지", "u1", 1) is False)
-
-    st.vote("msg1", "u1", -1)
-    st.vote("msg1", "u2", -1)
-    st.vote("msg2", "u1", 1)
-    good, bad = st.feedback_totals()
-    ok &= check("표가 집계됨", (good, bad) == (1, 2), f"👍{good} 👎{bad}")
-
-    # 같은 사람이 마음을 바꾼 경우. 행이 늘면 안 된다.
-    st.vote("msg1", "u1", 1)
-    good, bad = st.feedback_totals()
-    ok &= check("한 사람당 한 표 (뒤집으면 교체)", (good, bad) == (2, 1),
-                f"👍{good} 👎{bad}")
-
-    # 👍 로 바꾼 뒤 옛 👎 리액션이 떨어져도 현재 표를 지우면 안 된다.
-    st.unvote("msg1", "u1", -1)
-    good, bad = st.feedback_totals()
-    ok &= check("반대표로 바꾼 뒤 옛 리액션 제거는 무해", (good, bad) == (2, 1),
-                f"👍{good} 👎{bad}")
-
-    st.unvote("msg1", "u2", -1)
-    good, bad = st.feedback_totals()
-    ok &= check("리액션을 떼면 표가 빠짐", (good, bad) == (2, 0), f"👍{good} 👎{bad}")
-
-    by_route = {r["route"]: (r["good"], r["bad"]) for r in st.feedback_by_route()}
-    ok &= check("경로별로 집계됨", by_route.get("direct") == (1, 0)
-                and by_route.get("exact") == (1, 0), str(by_route))
-
-    print("\n11. 잡담 경로 (게임 질문이 새지 않는가)")
+    print("\n10. 잡담 경로 (게임 질문이 새지 않는가)")
     from gobuk.engine import answer as answer_mod
     real_chat = answer_mod.chat
     talker = Engine(eng.store, embedder=eng._embedder, use_llm=True, log_misses=False)
@@ -262,7 +228,7 @@ def main() -> int:
     finally:
         answer_mod.chat = real_chat
 
-    print("\n12. LLM 요약의 거절 판별")
+    print("\n11. LLM 요약의 거절 판별")
     # 예전엔 '없습니다' 라는 낱말로 거절을 판별해서, 문서에 근거한 정상 답변인
     # "요구 레벨이 없습니다" 가 통째로 버려지고 관리자 문의가 나갔다.
     orig_min, orig_direct = config.VECTOR_MIN, config.VECTOR_DIRECT

@@ -147,8 +147,7 @@ H2(`##`) 단위로 잘라 검색하므로, 절 제목을 달아두면 정확도�
    (이걸 안 켜면 일반 메시지에 반응하지 못한다)
 4. **OAuth2 → URL Generator**
    - 스코프: `bot`, `applications.commands`
-   - 권한: `Send Messages`, `Embed Links`, `Read Message History`,
-     `Add Reactions`
+   - 권한: `Send Messages`, `Embed Links`, `Read Message History`
 5. 생성된 URL로 서버에 초대
 
 ```bash
@@ -186,7 +185,6 @@ H2(`##`) 단위로 잘라 검색하므로, 절 제목을 달아두면 정확도�
 
 ```bash
 .venv/bin/python query.py --unanswered   # 답변 못 한 질문 (많이 물어본 순)
-.venv/bin/python query.py --feedback     # 👍/👎 집계
 ```
 
 `--unanswered`가 **기획자에게 넘길 문서 작성 우선순위**다. 같은 질문은 행이
@@ -196,8 +194,8 @@ H2(`##`) 단위로 잘라 검색하므로, 절 제목을 달아두면 정확도�
 - `고유명사`가 잡혔는데 답을 못 했다 → 문서는 있는데 내용이 비었다
 - 안 잡혔다 → 문서가 아예 없다 (이쪽이 대부분)
 
-`--feedback`은 어느 유사도 구간에서 품질이 무너지는지 보여준다. 이 숫자가
-쌓인 뒤에 `.env`의 `VECTOR_MIN` / `VECTOR_DIRECT`를 조정한다.
+`.env`의 `VECTOR_MIN` / `VECTOR_DIRECT` 는 임시값이다. `--unanswered` 가
+쌓인 뒤에 조정한다.
 
 ---
 

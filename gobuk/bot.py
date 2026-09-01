@@ -28,14 +28,11 @@ log = logging.getLogger("gobuk")
 
 MAX_LEN = 1900  # 디스코드 본문 2000자 제한
 
-GOOD, BAD = "👍", "👎"
-
 
 class GobukBot(discord.Client):
     def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
-        intents.reactions = True  # 만족도 수집용 (특권 인텐트 아님)
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.store = Store()
@@ -60,53 +57,6 @@ class GobukBot(discord.Client):
         async with self._lock:
             return await asyncio.to_thread(self.engine.ask, question)
 
-    async def db(self, fn, *args):
-        """SQLite 접근은 전부 이 락을 거쳐야 한다.
-
-        엔진이 별도 스레드에서 도는 동안 리액션 핸들러가 같은 커넥션에
-        끼어드는 것을 막는다 (Store 는 check_same_thread=False 로 열려 있다).
-        """
-        async with self._lock:
-            return await asyncio.to_thread(fn, *args)
-
-    async def offer_feedback(self, msg: discord.Message, question: str, reply) -> None:
-        """답변을 기록하고 👍/👎 를 미리 달아준다.
-
-        직접 누르게만 해두면 표가 거의 안 모인다. 임계값 튜닝의 유일한
-        객관적 근거라서 참여 문턱을 최대한 낮춘다.
-        답을 못 한 경우(fallback)는 물어봐야 얻을 게 없으므로 달지 않는다.
-        """
-        if not reply.answered:
-            return
-        await self.db(
-            self.store.log_answer, str(msg.id), question, reply.text,
-            reply.route, reply.intent, reply.similarity,
-            [s["page_id"] for s in reply.sources if s.get("page_id")],
-        )
-        try:
-            await msg.add_reaction(GOOD)
-            await msg.add_reaction(BAD)
-        except discord.HTTPException:
-            # 권한이 없거나 레이트리밋. 답변 자체는 이미 나갔으므로 넘어간다.
-            log.warning("리액션 추가 실패 (Add Reactions 권한 확인)")
-
-    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
-        if payload.user_id == (self.user.id if self.user else None):
-            return
-        vote = _vote_of(payload.emoji)
-        if vote is None:
-            return
-        if await self.db(self.store.vote, str(payload.message_id),
-                         str(payload.user_id), vote):
-            log.info("만족도 %s msg=%s", GOOD if vote > 0 else BAD, payload.message_id)
-
-    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent) -> None:
-        vote = _vote_of(payload.emoji)
-        if vote is None:
-            return
-        await self.db(self.store.unvote, str(payload.message_id),
-                      str(payload.user_id), vote)
-
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot or not message.content.strip():
             return
@@ -129,15 +79,9 @@ class GobukBot(discord.Client):
                 log.exception("응답 실패")
                 await message.reply(config.ADMIN_CONTACT, mention_author=False)
                 return
-        sent = await message.reply(embed=build_embed(question, reply),
-                                   mention_author=False)
-        await self.offer_feedback(sent, question, reply)
+        await message.reply(embed=build_embed(question, reply),
+                            mention_author=False)
         log.info("[%s] %.0fms %s", reply.route, reply.elapsed_ms, question[:60])
-
-
-def _vote_of(emoji) -> int | None:
-    name = getattr(emoji, "name", None) or str(emoji)
-    return 1 if name == GOOD else -1 if name == BAD else None
 
 
 def build_embed(question: str, reply) -> discord.Embed:
@@ -180,9 +124,7 @@ async def gobuk(interaction: discord.Interaction, 질문: str) -> None:
         log.exception("응답 실패")
         await interaction.followup.send(config.ADMIN_CONTACT)
         return
-    # wait=True 라야 보낸 메시지를 돌려받는다. 리액션을 달려면 필요하다.
-    sent = await interaction.followup.send(embed=build_embed(질문, reply), wait=True)
-    await bot.offer_feedback(sent, 질문, reply)
+    await interaction.followup.send(embed=build_embed(질문, reply))
     log.info("[%s] %.0fms %s", reply.route, reply.elapsed_ms, 질문[:60])
 
 

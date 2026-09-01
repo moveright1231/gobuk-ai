@@ -33,7 +33,6 @@ python query.py "토스파 레시피 알려줘"
 python query.py --bench       # 표준 질문 12개 일괄 실행, 경로 분포 출력
 python query.py -i
 python query.py --unanswered  # 답변 못 한 질문 (= 문서 작성 우선순위)
-python query.py --feedback    # 👍/👎 집계 (= 임계값 튜닝 근거)
 python bot.py
 
 python tests/test_sync.py          # 동기화 로직 (API 불필요)
@@ -59,7 +58,7 @@ gobuk/
     records.py                레코드/별칭/동기화 커서/변경 로그
     search.py                 청크/임베딩/FTS
     cache.py                  메모리뱅크 (표 정의 + 클래스)
-    feedback.py               미답변 질문/답변 만족도
+    unanswered.py             답변 못 한 질문 로그
   engine/
     intent.py                 의도 판별 + 고유명사 추출
     answer.py                 응답 라우팅
@@ -182,7 +181,7 @@ tests/
 지금은 두 프롬프트 모두 답할 수 없을 때 `__NO__` 만 출력하도록 지시한다.
 표식은 정상 답변과 절대 겹치지 않는다. 모델이 표식을 무시하고 말로 거절하는
 경우만 좁은 낱말 검사(`모르겠`/`정보가없`/`찾을수없`/`알수없`)로 한 번 더 잡는다.
-`없습니다` 는 그 목록에서 뺐다. `tests/test_router.py` 12번이 이걸 지킨다.
+`없습니다` 는 그 목록에서 뺐다. `tests/test_router.py` 11번이 이걸 지킨다.
 
 ### 7. 잡담 경로는 게임 질문을 절대 받지 않는다
 
@@ -261,16 +260,6 @@ tests/
 
   임베딩 실패 같은 설비 장애는 적재하지 않는다(문서 부재가 아니므로).
   `--bench`는 같은 질문을 반복 실행하므로 집계를 오염시키지 않게 꺼져 있다.
-
-- **👍/👎 리액션 수집** — 봇이 답변 메시지에 👍/👎 를 미리 달고, 눌린 표를
-  `answers`(답변 시점의 route·similarity) + `votes`(한 사람당 한 표)로 남긴다.
-  `python query.py --feedback` 이 경로별 만족도와 **👎 가 몰린 유사도 구간**을
-  출력한다. 임계값을 어느 쪽으로 얼마나 옮길지는 이 숫자로 정한다.
-
-  표를 세는 게 목적이 아니라 **어느 유사도에서 품질이 무너지는지**를 보는 게
-  목적이라 답변 시점의 `route` 와 `similarity` 를 반드시 함께 남긴다.
-  답을 못 한 fallback 에는 리액션을 달지 않는다 (물어봐야 얻을 게 없고,
-  그건 이미 미답변 로그에 잡힌다).
 
 ## 기획자에게 전달된 작성 규칙
 
