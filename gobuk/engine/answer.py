@@ -316,11 +316,26 @@ class Engine:
 
         top_id, top_score = picked[0]
         top = ctx[top_id]
-        sources = [{
-            "page_id": ctx[cid]["page_id"], "title": ctx[cid]["title"],
-            "url": ctx[cid]["url"], "db": ctx[cid]["db_key"],
-            "score": round(s, 4),
-        } for cid, s in picked]
+        # 청크 단위 검색 결과를 페이지 단위로 합친다.
+        #
+        # 한 문서의 서로 다른 절이 동시에 상위에 오르는 건 정상이다 — '보스 가이드'
+        # 의 위치 절과 보상 절이 같이 걸리는 식이다. 그런데 url 은 페이지 단위라
+        # 그대로 두면 봇의 '자세히 보기'에 똑같은 링크가 두 번 나온다.
+        #
+        # picked 는 유사도 내림차순이므로 먼저 만난 것이 그 페이지의 최고 점수다.
+        # 여기서 합쳐두면 뒤의 [:2] 슬라이스에서 두 번째 자리를 다른 문서가 갖는다.
+        sources: list[dict] = []
+        seen_pages: set[str] = set()
+        for cid, s in picked:
+            pid = ctx[cid]["page_id"]
+            if pid in seen_pages:
+                continue
+            seen_pages.add(pid)
+            sources.append({
+                "page_id": pid, "title": ctx[cid]["title"],
+                "url": ctx[cid]["url"], "db": ctx[cid]["db_key"],
+                "score": round(s, 4),
+            })
 
         # 충분히 확실하면 LLM을 부르지 않는다. 기획자가 쓴 요약이 이미 답이다.
         if top_score >= config.VECTOR_DIRECT or not self.use_llm:
