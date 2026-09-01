@@ -296,6 +296,25 @@ def doctor() -> int:
             problems += 1
             continue
 
+        # 스키마 대조. 워크스페이스마다 프로퍼티 이름이 다를 수 있고, 틀리면
+        # 에러 없이 제목이 전부 '(제목 없음)' 이 되어 별칭 색인이 죽는다.
+        # 수집도 성공하고 건수도 맞게 나오므로 눈치채기 어렵다.
+        schema = (meta.json().get("properties") or {})
+        tprop = spec["title_prop"]
+        if tprop not in schema:
+            actual = [k for k, v in schema.items() if v.get("type") == "title"]
+            hint = f"실제 제목 프로퍼티: {actual[0]!r}" if actual else "title 타입 없음"
+            print(f"  {spec['label']:<6} 스키마 불일치 — 제목 프로퍼티 {tprop!r} 없음. {hint}")
+            print(f"           .env 에 WIKI_TITLE_PROP={actual[0] if actual else '<이름>'} 를 넣어주세요")
+            problems += 1
+            continue
+        sprop = spec.get("status_prop")
+        if sprop and sprop not in schema:
+            print(f"  {spec['label']:<6} 스키마 불일치 — 상태 프로퍼티 {sprop!r} 없음.")
+            print("           비워두면(WIKI_STATUS_PROP=) 전부 게시로 취급합니다")
+            problems += 1
+            continue
+
         q = requests.post(f"{config.NOTION_BASE}/data_sources/{ds}/query",
                           headers=headers, json={"page_size": 100}, timeout=30)
         rows = q.json().get("results", []) if q.ok else []
