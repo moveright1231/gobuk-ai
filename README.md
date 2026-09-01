@@ -9,6 +9,11 @@ Notion `search` API는 키워드 매칭이라 "토스파 레시피"에 약하고
 
 ## 설치
 
+새 환경에 처음 올리는 경우 **[SETUP.md](SETUP.md)** 를 따라가면 된다
+(노션 통합 연결, 데이터소스 ID 확인, 디스코드 봇 설정, 크론, 문제 해결).
+아래는 요약이다.
+
+
 ```bash
 pip install -r requirements.txt
 cp .env.example .env      # 토큰 채우기
