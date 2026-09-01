@@ -6,6 +6,7 @@
   python sync.py --reflatten    # API 안 부르고 로컬 원본만으로 답변 문구 재생성.
   python sync.py --no-embed     # 임베딩 건너뛰기. 구조만 확인할 때.
   python sync.py --stats        # 현재 적재 상태만 출력.
+  python sync.py --discover     # 통합이 볼 수 있는 데이터소스 ID 찾기. 설치 시 1회.
 """
 from __future__ import annotations
 
@@ -173,6 +174,69 @@ def print_stats(store: Store) -> None:
         print(f"  캐시 무효화 대기: {kinds}")
 
 
+def discover() -> int:
+    """통합에 연결된 데이터소스를 찾아 .env 에 넣을 값을 출력한다.
+
+    새 워크스페이스에 설치할 때 첫 관문이다. ds_id 는 노션 UI 어디에도 안 보이고
+    URL 에 있는 건 데이터베이스 ID 라서 그대로 쓰면 404 가 난다. search API 로
+    통합이 실제로 볼 수 있는 것만 뽑아주면, 연결 누락과 ID 오기입을 한 번에 가른다.
+    """
+    client = NotionClient(config.require_notion_token())
+
+    def title_of(o: dict) -> str:
+        t = o.get("title")
+        if isinstance(t, list):
+            s = "".join(x.get("plain_text", "") for x in t)
+            if s:
+                return s
+        for v in (o.get("properties") or {}).values():
+            if isinstance(v, dict) and v.get("type") == "title":
+                s = "".join(x.get("plain_text", "") for x in v.get("title", []))
+                if s:
+                    return s
+        return o.get("name") or "(제목 없음)"
+
+    print("통합이 접근할 수 있는 노션 객체")
+    try:
+        res = client._request("POST", "/search", json={"page_size": 100})
+    except Exception as exc:
+        print(f"  조회 실패: {str(exc)[:200]}")
+        return 1
+
+    rows = res.get("results", [])
+    if not rows:
+        print("\n  0건입니다. 통합이 어떤 페이지에도 연결되지 않았습니다.")
+        print("  노션에서 가이드 DB를 풀페이지로 열고 ··· > 연결 > 통합 추가.")
+        print("  (상위 페이지에만 걸면 상속되지 않는 경우가 있으니 DB 자체에도 해주세요)")
+        return 1
+
+    found: list[tuple[str, str]] = []
+    for o in rows:
+        kind, oid = o.get("object"), o.get("id")
+        print(f"\n  [{kind}] {title_of(o)}\n      id: {oid}")
+        if kind == "data_source":
+            found.append((title_of(o), oid))
+        elif kind == "database":
+            for d in o.get("data_sources") or []:
+                found.append((d.get("name") or title_of(o), d.get("id")))
+
+    print("\n" + "-" * 58)
+    if not found:
+        print("데이터소스를 찾지 못했습니다. DB 자체를 풀페이지로 열고 연결을 추가해주세요.")
+        return 1
+    print(".env 에 붙여넣을 값:\n")
+    seen: set[str] = set()
+    for name, dsid in found:
+        if dsid in seen:
+            continue
+        seen.add(dsid)
+        print(f"  # {name}")
+        print(f"  WIKI_DS_ID={dsid}")
+    if len(seen) > 1:
+        print("\n  여러 개가 나왔습니다. 가이드 DB 하나만 골라 넣어주세요.")
+    return 0
+
+
 def doctor() -> int:
     """설정을 단계별로 점검한다.
 
@@ -254,6 +318,14 @@ def doctor() -> int:
             problems += 1
         print(f"  {spec['label']:<6} OK  {len(rows):>3}건 (게시 {pub}건){flag}{pub_note}")
 
+    # 처음 설치한 사람이 제일 먼저 만나는 상태다. 위 루프는 DB별로 '건너뜀'만
+    # 찍고 조용히 끝나므로, 아무것도 등록되지 않았다는 사실을 따로 말해준다.
+    if not any(s["ds_id"] for s in config.DATA_SOURCES.values()):
+        print("\n  등록된 데이터소스가 하나도 없습니다.")
+        print("  .env 의 WIKI_DS_ID 를 채워주세요. 값을 모르면:")
+        print("      python sync.py --discover")
+        problems += 1
+
     if problems:
         print(f"\n문제 {problems}건. 해당 DB를 풀페이지로 열고 "
               "··· > 연결 > 통합 추가 를 확인해주세요.")
@@ -314,7 +386,12 @@ def main() -> int:
     ap.add_argument("--no-embed", action="store_true", help="임베딩 생략")
     ap.add_argument("--stats", action="store_true", help="상태만 출력")
     ap.add_argument("--doctor", action="store_true", help="설정/권한 점검")
+    ap.add_argument("--discover", action="store_true",
+                    help="통합이 볼 수 있는 데이터소스 ID 찾기 (설치 시 1회)")
     args = ap.parse_args()
+
+    if args.discover:
+        return discover()
 
     if args.doctor:
         return doctor()

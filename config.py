@@ -102,17 +102,21 @@ DATA_SOURCES = {
         "status_prop": "상태",
         "kind": "document",
     },
-    # 현재 운영되는 유일한 DB ('거북 스토리 가이드_ai', 21건).
+    # 현재 운영되는 유일한 DB ('거북 스토리 가이드_ai').
     # 프로퍼티는 태그/제목뿐이고 정보는 전부 페이지 본문에 있다.
+    #
+    # ds_id 를 코드에 박지 않고 .env 에서 읽는다. 워크스페이스마다 값이 다르고
+    # (개인 복사본 != 원본), 박아두면 clone 한 사람이 404 를 만나고도 원인을
+    # 찾지 못한다. 값을 모르면 `python sync.py --discover` 로 찾을 수 있다.
     #
     # status_prop 이 None 인 이유: 이 DB에는 '상태' 프로퍼티가 없다. 그대로
     # "상태" 를 읽게 두면 전 행이 미게시로 걸러져 봇이 0건으로 답한다.
     # 노션에 상태 셀렉트를 추가하면 여기에 "상태" 를 적으면 된다.
     "wiki": {
-        "ds_id": "aea1770d-2450-83af-b387-875f894fa936",
+        "ds_id": os.getenv("WIKI_DS_ID", "").strip(),
         "label": "위키",
-        "title_prop": "페이지",
-        "status_prop": None,
+        "title_prop": os.getenv("WIKI_TITLE_PROP", "페이지"),
+        "status_prop": os.getenv("WIKI_STATUS_PROP", "").strip() or None,
         "kind": "document",
     },
 }
